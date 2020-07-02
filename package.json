@@ -1,22 +1,28 @@
 {
   "name": "discord-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Simple music bot with custom made menu for selecting video from a list fetched from youtube.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khantu12/azis-discord-bot.git"
+  },
   "author": "",
   "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/khantu12/azis-discord-bot/issues"
+  },
+  "homepage": "https://github.com/khantu12/azis-discord-bot#readme",
   "dependencies": {
-    "@discordjs/opus": "^0.1.0",
+    "@discordjs/opus": "^0.3.2",
+    "axios": "^0.19.2",
     "decode-html": "^2.0.0",
     "discord.js": "^12.2.0",
     "ffmpeg": "0.0.4",
     "fluent-ffmpeg": "^2.1.2",
-    "googleapis": "^48.0.0",
-    "jssoup": "0.0.11",
-    "urllib": "^2.34.2",
-    "ytdl-core": "^2.1.0"
+    "ytdl-core": "^2.1.7"
   }
 }

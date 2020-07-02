@@ -4,6 +4,7 @@ const ytdl = require('ytdl-core');
 const JSSoup = require('jssoup').default;
 const urllib = require('urllib');
 const decode = require('decode-html');
+const axios = require('axios').default;
 
 const client = new Discord.Client();
 
@@ -27,29 +28,33 @@ client.on('message', async (message) => {
   const userId = message.member.user.id;
   if (!(userId in data)) data[userId] = new Map();
 
-  const serverQueue = queue.get(message.guild.id);
-  if (data[userId].size > 0 && !message.content.startsWith(`${prefix}p`)) {
-    if (message.content.startsWith('c')) {
-      delete data[userId];
-      message.channel.send('Canceled!');
+  try {
+    const serverQueue = queue.get(message.guild.id);
+    if (data[userId].size > 0 && !message.content.startsWith(`${prefix}p`)) {
+      if (message.content.startsWith('c')) {
+        delete data[userId];
+        message.channel.send('Canceled!');
+      } else {
+        execute(message, serverQueue, true);
+      }
+      return;
+    } else if (message.content.startsWith(`${prefix}p`)) {
+      execute(message, serverQueue);
+      return;
+    } else if (message.content.startsWith(`${prefix}s`)) {
+      skip(message, serverQueue);
+      return;
+    } else if (message.content.startsWith(`${prefix}stop`)) {
+      stop(message, serverQueue);
+      return;
+    } else if (message.content.startsWith(`${prefix}c`)) {
+    } else if (!message.content.startsWith(prefix)) {
+      return;
     } else {
-      execute(message, serverQueue, true);
+      message.channel.send('You need to enter a valid command!');
     }
-    return;
-  } else if (message.content.startsWith(`${prefix}p`)) {
-    execute(message, serverQueue);
-    return;
-  } else if (message.content.startsWith(`${prefix}s`)) {
-    skip(message, serverQueue);
-    return;
-  } else if (message.content.startsWith(`${prefix}stop`)) {
-    stop(message, serverQueue);
-    return;
-  } else if (message.content.startsWith(`${prefix}c`)) {
-  } else if (!message.content.startsWith(prefix)) {
-    return;
-  } else {
-    message.channel.send('You need to enter a valid command!');
+  } catch (e) {
+    message.channel.send('Error occured: ' + e);
   }
 });
 
@@ -58,7 +63,8 @@ async function execute(message, serverQueue, selecting = false) {
   var url;
   const userId = message.member.user.id;
   if (userId in data && selecting) {
-    args = [0, data[userId].get(message.content).url];
+    const songTitle = data[userId].get(message.content).url;
+    args = [0, songTitle];
     delete data[userId];
   } else {
     args = message.content.split(' ');
@@ -69,6 +75,7 @@ async function execute(message, serverQueue, selecting = false) {
     return message.channel.send(
       'You need to be in a voice channel to play music!'
     );
+
   const permissions = voiceChannel.permissionsFor(message.client.user);
   if (!permissions.has('CONNECT') || !permissions.has('SPEAK')) {
     return message.channel.send(
@@ -77,11 +84,12 @@ async function execute(message, serverQueue, selecting = false) {
   }
 
   if (selecting) {
-    url = args[1];
+    url = args[1].toString();
   } else {
-    url = get_song(message, args.slice(1));
+    url = get_song(message, args.slice(1).toString());
   }
-  if (url == '') {
+
+  if (url === '') {
     return;
   }
 
@@ -92,7 +100,7 @@ async function execute(message, serverQueue, selecting = false) {
   };
 
   if (!serverQueue) {
-    const queueContruct = {
+    const queueConstruct = {
       textChannel: message.channel,
       voiceChannel: voiceChannel,
       connection: null,
@@ -101,14 +109,14 @@ async function execute(message, serverQueue, selecting = false) {
       playing: true,
     };
 
-    queue.set(message.guild.id, queueContruct);
+    queue.set(message.guild.id, queueConstruct);
 
-    queueContruct.songs.push(song);
+    queueConstruct.songs.push(song);
 
     try {
       var connection = await voiceChannel.join();
-      queueContruct.connection = connection;
-      play(message.guild, queueContruct.songs[0]);
+      queueConstruct.connection = connection;
+      play(message.guild, queueConstruct.songs[0]);
     } catch (err) {
       console.log(err);
       queue.delete(message.guild.id);
@@ -117,6 +125,7 @@ async function execute(message, serverQueue, selecting = false) {
   } else {
     serverQueue.songs.push(song);
     message.channel.send(`**${song.title}** has been added to the queue!`);
+    console.log(`**${song.title}** has been added to the queue!`);
     return;
   }
 }
@@ -149,7 +158,7 @@ function play(guild, song) {
   }
 
   const dispatcher = serverQueue.connection
-    .play(ytdl(song.url))
+    .play(ytdl(song.url, {filter: 'audioonly'})) //, {type: 'opus'})
     .on('finish', () => {
       serverQueue.songs.shift();
       play(guild, serverQueue.songs[0]);
@@ -157,56 +166,88 @@ function play(guild, song) {
     .on('error', (error) => console.error(error));
   dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
   serverQueue.textChannel.send(`Start playing: **${song.title}**`);
+  console.log(`Start playing: **${song.title}**`);
 }
 
-function get_song(message, songg) {
+function get_song(message, song, time = 0) {
   const channel = message.channel;
   const userId = message.member.user.id;
+  console.log('Getting songs ' + time);
 
-  const song = songg.toString();
   if (song.includes('www')) {
     return song;
   }
 
-  urllib
-    .request(
+  const searchString = song.split(',').join('+');
+
+  axios
+    .get(
+      // urllib
+      //   .request(
       'https://www.youtube.com/results?search_query=' +
-        song.replace(' ', '+') +
+        searchString +
         '&sp=EgIQAQ%253D%253D'
     )
     .then((result) => {
-      var soup = new JSSoup(result.data);
-      var i = 1;
-      const v = soup.findAll('a', {
-        title: !null,
-        class: 'yt-simple-endpoint style-scope ytd-video-renderer',
-      });
-      for (let index = 0; index < v.length; index++) {
-        const link = v[index];
-        const href = link.attrs.href;
-        const title = link.attrs.title;
-        if (
-          href !== undefined &&
-          title !== undefined &&
-          href.includes('/watch') &&
-          !href.includes('list') &&
-          !title.includes('/watch')
-        ) {
-          const url = 'http://www.youtube.com' + href;
-          data[userId].set(i.toString(), {title: decode(title), url: url});
-          i += 1;
-          if (i == 10) {
-            break;
-          }
+      const d = result.data.match(
+        /(?<=window\["ytInitialData"\] = )(.+)(?=;)/gm
+      );
+      const jsondata = JSON.parse(d[0]);
+      const records =
+        jsondata.contents.twoColumnSearchResultsRenderer.primaryContents
+          .sectionListRenderer.contents[0].itemSectionRenderer.contents;
+      records.shift();
+      for (let i = 0; i < records.length; i++) {
+        const video = records[i].videoRenderer;
+        const title = video.title.runs[0].text;
+        const url =
+          video.navigationEndpoint.commandMetadata.webCommandMetadata.url;
+        // console.log(title);
+        // console.log('https://www.youtube.com' + url);
+        // console.log('-----');
+        data[userId].set((i + 1).toString(), {title: decode(title), url: url});
+        if (i === 9) {
+          break;
         }
       }
+      // OLD
+      // var soup = new JSSoup(result.data);
+      // var i = 1;
+      // const v = soup.findAll('a', {
+      //   id: 'video-title',
+      //   title: !null,
+      //   class: 'yt-simple-endpoint style-scope ytd-video-renderer',
+      // });
+      // console.log('Got songs');
+      // for (let index = 0; index < v.length; index++) {
+      //   const link = v[index];
+      //   const href = link.attrs.href;
+      //   const title = link.attrs.title;
+      //   if (
+      //     href !== undefined &&
+      //     title !== undefined &&
+      //     href.includes('/watch') &&
+      //     !href.includes('list') &&
+      //     !title.includes('/watch')
+      //   ) {
+      //     const url = 'https://www.youtube.com' + href;
+      //     data[userId].set(i.toString(), {title: decode(title), url: url});
+      //     i += 1;
+      //     if (i === 10) {
+      //       break;
+      //     }
+      //   }
+      // }
       let str = '';
       data[userId].forEach((value, key, map) => {
         str += `${key}.    **${value.title}**\n`;
       });
-      channel.send(str);
+      if (str !== ' ' && str) {
+        channel.send(str);
+      }
+      return;
     });
+
   return '';
 }
-
 client.login(token);
