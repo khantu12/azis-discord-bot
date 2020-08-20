@@ -10,10 +10,14 @@ const client = new Discord.Client();
 const queue = new Map();
 const data = {};
 var currentRequest = "";
-//var lines = 1;
+var lines = 2;
 
 client.once("ready", () => {
     console.clear();
+	logCurrentSong("", clc.bgYellow("NO SONG PLAYING"), "");
+    process.stdout.cursorTo(0, 1);
+	process.stdout.write("--------------------------------");
+    process.stdout.cursorTo(0, 2);
 });
 
 client.once("reconnecting", () => {
@@ -109,16 +113,23 @@ const execute = async (message, serverQueue, selecting = false) => {
             .slice(1)
             .toString();
         if (cmdArgs.includes("www")) {
-			const songInfo = await ytdl.getInfo(cmdArgs).catch((e) => {
-				logToConsole(usertag, clc.bgRedBright, "ERROR", e);
-			});
-			if (songInfo === undefined) 
-				logToConsole(usertag, clc.bgRedBright, "ERROR", "SongInfo udefined");
-			song = {
-				title: songInfo.title,
-				url: songInfo.video_url,
-				usertag: usertag
-			};
+            const songInfo = await ytdl.getInfo(cmdArgs).catch(e => {
+                logToConsole(usertag, clc.bgRedBright, "ERROR", e);
+            });
+            if (songInfo === undefined) {
+                logToConsole(
+                    usertag,
+                    clc.bgRedBright,
+                    "ERROR",
+                    "SongInfo udefined"
+                );
+                return;
+            }
+            song = {
+                title: songInfo.title,
+                url: songInfo.video_url,
+                usertag: usertag
+            };
         } else {
             currentRequest = cmdArgs.split(",").join(" ");
             fetchYtSongs(message, cmdArgs);
@@ -174,6 +185,7 @@ const play = (message, song) => {
     const serverQueue = queue.get(guild.id);
     const usertag = message.member.user.tag;
     if (!song) {
+		logCurrentSong("", clc.bgYellow("NO SONG PLAYING"), "");
         serverQueue.voiceChannel.leave();
         queue.delete(guild.id);
         return;
@@ -186,9 +198,7 @@ const play = (message, song) => {
                 play(message, serverQueue.songs[0]);
             })
             .on("error", error => console.error(error));
-		//process.stdout.cursorTo(0, 0);
-		//process.stdout.write(clc.whiteBright.bold("NOW PLAYING: " + song.title));
-		//process.stdout.cursorTo(0, lines);
+		logCurrentSong(song.usertag, clc.bgGreenBright("NOW PLAYING"), song.title);
         dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
         serverQueue.textChannel.send(`Start playing: **${song.title}**`);
         logToConsole(song.usertag, clc.green, "PLAYING", song.title);
@@ -271,7 +281,21 @@ const logToConsole = (usertag, color, status, text) => {
             8 - status.length
         )}: ${text} (${clc.cyanBright(usertag)})`
     );
-	//lines++;
+    lines++;
 };
+
+const logCurrentSong = (usertag, status, songTitle) => {
+	process.stdout.cursorTo(0, 0);
+	process.stdout.clearLine();
+	process.stdout.write(
+		clc.whiteBright.bold(
+			status +
+			": " +
+			songTitle
+		) +
+		` (${clc.cyanBright(usertag)})`
+	);
+	process.stdout.cursorTo(0, lines);
+}
 
 client.login(token);
