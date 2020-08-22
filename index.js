@@ -14,7 +14,7 @@ var nrlogs = 2;
 
 client.once("ready", () => {
     console.clear();
-	logCurrentSong("", clc.bgYellow("NO SONG PLAYING"), "");
+	logCurrentSong("", clc.bgYellow("PENDING"), "");
     process.stdout.cursorTo(0, 1);
 	process.stdout.write("--------------------------------");
     process.stdout.cursorTo(0, 2);
@@ -153,7 +153,7 @@ const play = (message, song) => {
     const serverQueue = queue.get(guild.id);
     const usertag = message.member.user.tag;
     if (!song) {
-		logCurrentSong("", clc.bgYellow("NO SONG PLAYING"), "");
+		logCurrentSong("", clc.bgYellow("PENDING"), "");
         serverQueue.voiceChannel.leave();
         queue.delete(guild.id);
         return;
