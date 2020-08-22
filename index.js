@@ -10,7 +10,7 @@ const client = new Discord.Client();
 const queue = new Map();
 const data = {};
 var currentRequest = "";
-var lines = 2;
+var nrlogs = 2;
 
 client.once("ready", () => {
     console.clear();
@@ -101,41 +101,8 @@ const execute = async (message, serverQueue, selecting = false) => {
         );
     }
 
-    const usertag = message.member.user.tag;
-    let song;
-    if (selecting) {
-        const userid = message.member.user.id;
-        song = data[userid].get(message.content);
-        delete data[userid];
-    } else {
-        const cmdArgs = message.content
-            .split(" ")
-            .slice(1)
-            .toString();
-        if (cmdArgs.includes("www")) {
-            const songInfo = await ytdl.getInfo(cmdArgs).catch(e => {
-                logToConsole(usertag, clc.bgRedBright, "ERROR", e);
-            });
-            if (songInfo === undefined) {
-                logToConsole(
-                    usertag,
-                    clc.bgRedBright,
-                    "ERROR",
-                    "SongInfo udefined"
-                );
-                return;
-            }
-            song = {
-                title: songInfo.title,
-                url: songInfo.video_url,
-                usertag: usertag
-            };
-        } else {
-            currentRequest = cmdArgs.split(",").join(" ");
-            fetchYtSongs(message, cmdArgs);
-            return;
-        }
-    }
+	const song = await getSong(message, selecting);
+	if (song === undefined) return;
     // Get the info for the song
     if (!serverQueue) {
         // Make the queue construct
@@ -163,6 +130,7 @@ const execute = async (message, serverQueue, selecting = false) => {
     } else {
         serverQueue.songs.push(song);
         message.channel.send(`**${song.title}** has been added to the queue!`);
+		const usertag = message.member.user.tag;
         logToConsole(usertag, clc.yellow, "QUEUED", song.title);
         return;
     }
@@ -211,6 +179,38 @@ const play = (message, song) => {
         );
     }
 };
+
+const getSong = async (message, selecting) => {
+    const usertag = message.member.user.tag;
+    if (selecting) {
+        const userid = message.member.user.id;
+        const song = data[userid].get(message.content);
+        delete data[userid];
+		return song;
+    } else {
+        const cmdArgs = message.content
+            .split(" ")
+            .slice(1)
+            .toString();
+		if (cmdArgs.includes("www")) {
+			let songInfo = undefined;
+			while (songInfo === undefined) {
+				songInfo = await ytdl.getInfo(cmdArgs).catch(e => {
+					logToConsole(usertag, clc.bgRedBright, "ERROR", e);
+				});
+			}
+			return {
+				title: songInfo.title,
+				url: songInfo.video_url,
+				usertag: usertag
+			};
+		} else {
+			currentRequest = cmdArgs.split(",").join(" ");
+			fetchYtSongs(message, cmdArgs);
+			return undefined;
+		}
+    }
+}
 
 const fetchYtSongs = (message, song) => {
     const userid = message.member.user.id;
@@ -281,7 +281,7 @@ const logToConsole = (usertag, color, status, text) => {
             8 - status.length
         )}: ${text} (${clc.cyanBright(usertag)})`
     );
-    lines++;
+    nrlogs++;
 };
 
 const logCurrentSong = (usertag, status, songTitle) => {
@@ -295,7 +295,7 @@ const logCurrentSong = (usertag, status, songTitle) => {
 		) +
 		` (${clc.cyanBright(usertag)})`
 	);
-	process.stdout.cursorTo(0, lines);
+	process.stdout.cursorTo(0, nrlogs);
 }
 
 client.login(token);
