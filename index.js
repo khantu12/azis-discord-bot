@@ -10,14 +10,11 @@ const client = new Discord.Client();
 const queue = new Map();
 const data = {};
 var currentRequest = "";
-var nrlogs = 2;
+var nrlogs = 2 + 6;
 
 client.once("ready", () => {
     console.clear();
-    logCurrentSong("", clc.bgYellow("PENDING"), "");
-    process.stdout.cursorTo(0, 1);
-    process.stdout.write("------");
-    process.stdout.cursorTo(0, 2);
+    logCurrentSong(undefined);
 });
 
 client.once("reconnecting", () => {
@@ -38,7 +35,7 @@ client.on("message", async message => {
         // Get the server queue
         const serverQueue = queue.get(message.guild.id);
         // Make request for a song from a song list
-        if (data[userid].size > 0) {
+		if (data[userid].size > 0) {
             if (!message.content.startsWith(`${prefix}`)) {
                 if (message.content.startsWith("c")) {
                     delete data[userid];
@@ -53,7 +50,7 @@ client.on("message", async message => {
                 } else if (message.content.startsWith("n")) {
                     // Get next page of the results (next;command)
                     sendYtSongsToChannel(
-                        message.member.user.id,
+						userid,
                         message.channel,
                         10
                     );
@@ -70,12 +67,14 @@ client.on("message", async message => {
             return;
             // Make request without having made a one for song list
         } else if (message.content.startsWith(`${prefix}p`)) {
-            execute(message, serverQueue);
-            return;
+            return execute(message, serverQueue);
             // Skip song
         } else if (message.content.startsWith(`${prefix}s`)) {
             skip(message, serverQueue);
             return;
+        } else if (message.content.startsWith(`${prefix}q`)) {
+			showQueue(message, serverQueue);
+			return;
         } else if (!message.content.startsWith(prefix)) {
             return;
         } else {
@@ -88,6 +87,7 @@ client.on("message", async message => {
 
 const execute = async (message, serverQueue, selecting = false) => {
     // Check if user is in a voice channel
+	const guildId = message.guild.id;
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel)
         return message.channel.send(
@@ -100,12 +100,8 @@ const execute = async (message, serverQueue, selecting = false) => {
             "I need the permissions to join and speak in your voice channel!"
         );
     }
-
-    const song = await getSong(message, selecting);
-    if (song === undefined) {
-        logToConsole(usertag, clc.bgGreenBright, "ERROR", "Could not get song");
-        return;
-    }
+	const song = await getSong(message, selecting);
+	if (!song) return;
     // Get the info for the song
     if (!serverQueue) {
         // Make the queue construct
@@ -118,7 +114,7 @@ const execute = async (message, serverQueue, selecting = false) => {
             playing: true
         };
         // Set the queue construct
-        queue.set(message.guild.id, queueConstruct);
+        queue.set(guildId, queueConstruct);
         queueConstruct.songs.push(song);
         // Try to establish a connection and play the song
         try {
@@ -127,13 +123,14 @@ const execute = async (message, serverQueue, selecting = false) => {
             play(message, queueConstruct.songs[0]);
         } catch (err) {
             console.log(err);
-            queue.delete(message.guild.id);
+            queue.delete(guildId);
             return message.channel.send(err);
         }
     } else {
         serverQueue.songs.push(song);
         message.channel.send(`**${song.title}** has been added to the queue!`);
         const usertag = message.member.user.tag;
+        logCurrentSong(serverQueue);
         logToConsole(usertag, clc.yellow, "QUEUED", song.title);
         return;
     }
@@ -152,13 +149,13 @@ const skip = (message, serverQueue) => {
 };
 
 const play = (message, song) => {
-    const guild = message.guild;
+	const guild = message.guild;
     const serverQueue = queue.get(guild.id);
     const usertag = message.member.user.tag;
     if (!song) {
-        logCurrentSong("", clc.bgYellow("PENDING"), "");
+        logCurrentSong(undefined);
         serverQueue.voiceChannel.leave();
-        queue.delete(guild.id);
+        queue.delete(message.guild);
         return;
     }
     try {
@@ -168,22 +165,14 @@ const play = (message, song) => {
                 serverQueue.songs.shift();
                 play(message, serverQueue.songs[0]);
             })
-            .on("error", (error) => console.error(error));
-        logCurrentSong(
-            song.usertag,
-            clc.bgGreenBright("NOW PLAYING"),
-            song.title
-        );
+            .on("error", error => console.error(error));
+        logCurrentSong(serverQueue);
         dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
         serverQueue.textChannel.send(`Start playing: **${song.title}**`);
         logToConsole(song.usertag, clc.green, "PLAYING", song.title);
     } catch {
-        logToConsole(
-            usertag,
-            clc.red.bold,
-            "ERROR",
-            "Was not able to fetch song"
-        );
+        logCurrentSong(serverQueue);
+        logToConsole( usertag, clc.red.bold, "ERROR", "Was not able to fetch song");
     }
 };
 
@@ -202,40 +191,45 @@ const getSong = async (message, selecting) => {
         if (cmdArgs.includes("www")) {
             let songInfo = undefined;
             let timeout = 10;
-            while (songInfo === undefined && timeout > 0) {
+            while (!songInfo && timeout !== 0) {
                 songInfo = await ytdl.getInfo(cmdArgs).catch(() => {
                     timeout--;
                 });
             }
-			if (timeout === 0) {
-				logToConsole(usertag, clc.bgRedBright, "ERROR", "Could not get song");
-				return undefined;
+            if (timeout <= 0) {
+				console.log('timeout', timeout ? 1 : 0);
+                logToConsole(
+                    usertag,
+                    clc.bgRedBright,
+                    "ERROR",
+                    "Could not get song"
+                );
+                return undefined;
+            }
+			const res = {
+                url: songInfo.url,
+                title: songInfo.videoDetails.title.substring(80, 0),
+                usertag: usertag
 			}
-            return {
-			  title: songInfo.title,
-			  url: songInfo.video_url,
-			  usertag: usertag,
-			};
+            return res;
         } else {
-            currentRequest = cmdArgs.split(",").join(" ");
-            fetchYtSongs(message, cmdArgs);
-            return undefined;
-        }
+			currentRequest = cmdArgs.split(",").join(" ");
+			fetchYtSongs(message, cmdArgs);
+			return undefined;
+		}
     }
 };
 
 const fetchYtSongs = (message, song) => {
-    const userid = message.member.user.id;
-    const usertag = message.member.user.tag;
-    const searchString = song.split(",").join("+");
-    logToConsole(usertag, clc.cyan, "FETCHING", song.split(",").join(" "));
+	const user = message.member.user;
+    logToConsole(user.tag, clc.cyan, "FETCHING", clc.bold(song.split(",").join(" ")));
     axios
         .get(
             "https://www.youtube.com/results?search_query=" +
-                searchString +
+                song.split(",").join("+") +
                 "&sp=EgIQAQ%253D%253D"
         )
-        .then((result) => {
+        .then(result => {
             const d = result.data.match(
                 /(?<=window\["ytInitialData"\] = )(.+)(?=;)/gm
             );
@@ -252,24 +246,24 @@ const fetchYtSongs = (message, song) => {
             let count = 0;
             for (let i = 0; i < records.length; i++) {
                 const video = records[i].videoRenderer;
-                if (video === undefined) continue;
+				if (!video) continue;
                 count++;
                 const title = video.title.runs[0].text;
                 const url =
                     video.navigationEndpoint.commandMetadata.webCommandMetadata
                         .url;
                 // Set the songs in a map
-                data[userid].set(count.toString(), {
-                    title: decode(title),
+                data[user.id].set(count.toString(), {
+                    title: decode(title).substring(80, 0),
                     url: url,
-                    usertag: usertag
+                    usertag: user.tag
                 });
             }
-            if (data[userid].keys().count === 0) fetchYtSongs(message, song);
-            sendYtSongsToChannel(message.member.user.id, message.channel);
-            return;
+            if (!data[user.id].keys().count) 
+				sendYtSongsToChannel(message.member.user.id, message.channel);
+			return;
         });
-    return;
+	return;
 };
 
 const sendYtSongsToChannel = (userid, channel, start = 1, amount = 10) => {
@@ -296,14 +290,49 @@ const logToConsole = (usertag, color, status, text) => {
     nrlogs++;
 };
 
-const logCurrentSong = (usertag, status, songTitle) => {
+const logCurrentSong = (serverQueue) => {
     process.stdout.cursorTo(0, 0);
     process.stdout.clearLine();
-    process.stdout.write(
-        clc.whiteBright.bold(status + ": " + songTitle) +
-            ` (${clc.cyanBright(usertag)})`
-    );
+    if (!serverQueue) {
+        console.log(clc.whiteBright.bold(clc.bgYellow("PENDING:") + " ..."));
+    } else {
+        const song = serverQueue.songs[0];
+        console.log(
+            clc.whiteBright.bold(
+                clc.bgGreenBright("NOW PLAYING:") + " " + song.title
+            ) + ` (${clc.cyanBright(song.usertag)})`
+        );
+    }
+    process.stdout.clearLine();
+    console.log("------");
+	for (let i = 1; i < 6; i++) {
+		process.stdout.clearLine();
+		try {
+			const qsong = serverQueue.songs[i];
+			console.log(
+				clc.white.italic("↑. " + qsong.title) +
+					` (${clc.cyanBright(qsong.usertag)})`
+			);
+		} catch {}
+	}
     process.stdout.cursorTo(0, nrlogs);
 };
+
+const showQueue = (message, serverQueue) => {
+	let msg = "";
+    if (!serverQueue) {
+		msg = "No music playing right now.\n";
+    } else {
+        const song = serverQueue.songs[0];
+		msg = `**NOW PLAYING**: ***${song.title}*** (_${song.usertag}_)\n`;
+    }
+	msg += "------\n";
+    if (serverQueue && serverQueue.songs.length > 1) {
+		serverQueue.songs.forEach((song, i) => {
+			if (i) msg += `↑. ***${song.title}*** (_${song.usertag}_)\n`;
+		});
+    }
+	message.channel.send(msg);
+}
 
 client.login(token);
