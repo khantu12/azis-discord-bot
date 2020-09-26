@@ -1,0 +1,5 @@
+discord.js
+ffmpeg
+fluent-ffmpeg
+@discordjs/opus
+ytdl-core
