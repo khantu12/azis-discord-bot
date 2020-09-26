@@ -88,6 +88,7 @@ client.on("message", async message => {
 
 const execute = async (message, serverQueue, selecting = false) => {
     // Check if user is in a voice channel
+	const usertag = message.member.user.tag;
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel)
         return message.channel.send(
@@ -213,7 +214,7 @@ const getSong = async (message, selecting) => {
 			}
             return {
 			  title: songInfo.title,
-			  url: songInfo.video_url,
+			  url: songInfo.videoDetails.video_url,
 			  usertag: usertag,
 			};
         } else {
