@@ -1,0 +1,4 @@
+{
+  "prefix": <prefix to be used by the bot for the command>,
+  "token": <your discord bot API token> ,
+}
