@@ -34,18 +34,15 @@ client.on("message", async message => {
 	const serverQueue = queue.get(message.guild.id) || null;
 	const isSelecting = data[userId].size > 0;
 	const commandsList = isSelecting ? {
-		'c': () => { 													// cancel
-			delete data[userId];
-			message.channel.send("Canceled!");
-		},
-		'n': () => sendYtSongsToChannel(userId, message.channel, 10), 	// next
-		'a': () => execute(message, serverQueue, true), 				// select song
-		'=p': () => { delete data[userId]; execute(message, serverQueue); }, 						// play
-		'=s': () => { delete data[userId]; skip(message, serverQueue); }, 						// skip
+		'c': () => { delete data[userId]; message.channel.send("Canceled!"); }, // cancel
+		'n': () => sendYtSongsToChannel(userId, message.channel, 10), 			// next
+		'a': () => execute(message, serverQueue, true), 						// select song
+		'=p': () => { delete data[userId]; execute(message, serverQueue); }, 	// play
+		'=s': () => { delete data[userId]; skip(message, serverQueue); }, 		// skip
 	} : {
-		'=p': () => execute(message, serverQueue), 						// play
-		'=s': () => skip(message, serverQueue), 						// skip
-		'=q': () => showQueue(message, serverQueue), 					// queue
+		'=p': () => execute(message, serverQueue), 								// play
+		'=s': () => skip(message, serverQueue), 								// skip
+		'=q': () => showQueue(message, serverQueue), 							// queue
 	};
 	const command = message.content.split(" ")[0].slice(0, 2);
 	if (command[0] === prefix || isSelecting) {
