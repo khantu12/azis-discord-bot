@@ -9,7 +9,6 @@ const client = new Discord.Client();
 
 const queue = new Map();
 const data = {};
-var currentRequest = "";
 var nrlogs = 2 + 6;
 
 client.once("ready", () => {
@@ -25,73 +24,42 @@ client.once("disconnect", () => {
 	console.log("Disconnect!");
 });
 
-//client.on('debug', console.log);
-//client.on('error', console.log);
-
 // Handle discord user commands
 client.on("message", async message => {
 	if (message.author.bot) return;
 	const userId = message.member.user.id;
 	// Make field for user
 	if (!(userId in data)) data[userId] = new Map();
-	try {
-		// Get the server queue
-		const serverQueue = queue.get(message.guild.id);
-		// Make request for a song from a song list
-		if (data[userId].size > 0) {
-			if (!message.content.startsWith(`${prefix}`)) {
-				if (message.content.startsWith("c")) {
-					delete data[userId];
-					message.channel.send("Canceled!");
-					logToConsole(
-						message.member.user.tag,
-						clc.red,
-						"CANCELED",
-						currentRequest
-					);
-					currentRequest = "";
-				} else if (message.content.startsWith("n")) {
-					// Get next page of the results (next;command)
-					sendYtSongsToChannel(
-						userId,
-						message.channel,
-						10
-					);
-				} else {
-					execute(message, serverQueue, true);
-				}
-			} else if (message.content.startsWith(`${prefix}p`)) {
-				delete data[userId];
-				execute(message, serverQueue);
-			} else if (message.content.startsWith(`${prefix}s`)) {
-				delete data[userId];
-				skip(message, serverQueue);
-			}
-			return;
-			// Make request without having made a one for song list
-		} else if (message.content.startsWith(`${prefix}p`)) {
-			return execute(message, serverQueue);
-			// Skip song
-		} else if (message.content.startsWith(`${prefix}s`)) {
-			skip(message, serverQueue);
-			return;
-		} else if (message.content.startsWith(`${prefix}q`)) {
-			showQueue(message, serverQueue);
-			return;
-		} else if (!message.content.startsWith(prefix)) {
-			return;
-		} else {
-			message.channel.send("You need to enter a valid command!");
-		}
-	} catch (e) {
-		message.channel.send("Error occurred: " + e);
+	// Get the server queue
+	const serverQueue = queue.get(message.guild.id) || null;
+	const isSelecting = data[userId].size > 0;
+	const commandsList = isSelecting ? {
+		'c': () => { 													// cancel
+			delete data[userId];
+			message.channel.send("Canceled!");
+		},
+		'n': () => sendYtSongsToChannel(userId, message.channel, 10), 	// next
+		'a': () => execute(message, serverQueue, true), 				// select song
+		'=p': () => { delete data[userId]; execute(message, serverQueue); }, 						// play
+		'=s': () => { delete data[userId]; skip(message, serverQueue); }, 						// skip
+	} : {
+		'=p': () => execute(message, serverQueue), 						// play
+		'=s': () => skip(message, serverQueue), 						// skip
+		'=q': () => showQueue(message, serverQueue), 					// queue
+	};
+	const command = message.content.split(" ")[0].slice(0, 2);
+	if (command[0] === prefix || isSelecting) {
+		const commandToExecute = commandsList[parseInt(command) ? 'a' : command] || null;
+		if (!commandToExecute) { return message.channel.send("You need to enter a valid command!"); }
+		commandToExecute();
 	}
 });
 
 const execute = async (message, serverQueue, selecting = false) => {
-	// Check if user is in a voice channel
 	const guildId = message.guild.id;
 	const voiceChannel = message.member.voice.channel;
+
+	// Check if user is in a voice channel
 	if (!voiceChannel)
 		return message.channel.send(
 			"You need to be in a voice channel to play music!"
@@ -139,7 +107,6 @@ const execute = async (message, serverQueue, selecting = false) => {
 		serverQueue.songs.push(song);
 		message.channel.send(`**${song.title}** has been added to the queue!`);
 		logCurrentSong(serverQueue);
-		logToConsole(message.member.user.tag, clc.yellow, "QUEUED", song.title);
 	}
 };
 
@@ -148,18 +115,15 @@ const skip = (message, serverQueue) => {
 		return message.channel.send(
 			"You have to be in a voice channel to stop the music!"
 		);
-	if (!serverQueue.connection && !serverQueue.connection.dispatcher)
+	if (!serverQueue || (serverQueue && !serverQueue.connection && !serverQueue.connection.dispatcher))
 		return message.channel.send("There is no song that I could skip!");
 
-	const userTag = message.member.user.tag;
-	const songTitle = serverQueue.songs[0].title
-	logToConsole(userTag, clc.magenta, "SKIP", songTitle);
+	message.channel.send(`Skipped song ${serverQueue.songs[0]}`);
 	serverQueue.connection.dispatcher.end();
 };
 
 const play = async (message, song) => {
 	const guildId = message.guild.id;
-	const userTag = message.member.user.tag;
 	const serverQueue = queue.get(guildId);
 
 	if (!song) {
@@ -180,18 +144,18 @@ const play = async (message, song) => {
 		logCurrentSong(serverQueue);
 		dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
 		serverQueue.textChannel.send(`Start playing: **${song.title}**`);
-		logToConsole(song.userTag, clc.green, "PLAYING", song.title);
 	} catch {
 		logCurrentSong(serverQueue);
-		logToConsole(userTag, clc.red.bold, "ERROR", "Was not able to fetch song");
 	}
 };
 
 const getSong = async (message, selecting, timeout = 10) => {
-	const {content, member} = message;
+	const { content, member } = message;
 	const userTag = member.user.tag;
+
 	if (!content)
 		return null;
+
 	if (selecting) {
 		const userId = member.user.id;
 		const song = data[userId].get(content);
@@ -213,7 +177,6 @@ const getSong = async (message, selecting, timeout = 10) => {
 					timeout ? getSong(message, selecting, timeout--) : null
 				);
 		} else {
-			currentRequest = cmdArgs.split(",").join(" ");
 			fetchYtSongs(message, cmdArgs);
 			return null;
 		}
@@ -221,8 +184,7 @@ const getSong = async (message, selecting, timeout = 10) => {
 };
 
 const fetchYtSongs = (message, song) => {
-	const {user} = message.member;
-	logToConsole(user.tag, clc.cyan, "FETCHING", clc.bold(song.split(",").join(" ")));
+	const { user } = message.member;
 	axios
 		.get(
 			"https://www.youtube.com/results?search_query=" +
@@ -240,9 +202,9 @@ const fetchYtSongs = (message, song) => {
 					.sectionListRenderer.contents[0].itemSectionRenderer
 					.contents;
 			} catch {
-				fetchYtSongs(message, song);
-				return;
+				return fetchYtSongs(message, song);
 			}
+			if (!records[0].videoRenderer) return fetchYtSongs(message, song);
 			let count = 0;
 			records.forEach(({videoRenderer: video}) => {
 				if (!video) return;
@@ -279,15 +241,6 @@ const sendYtSongsToChannel = (userId, channel, start = 1, amount = 10) => {
 
 	if (str !== " " && str)
 		channel.send(str);
-};
-
-const logToConsole = (userTag, color, status, text) => {
-	console.log(
-		`${color(`[${status}]`)}${" ".repeat(
-			8 - status.length
-		)}: ${text} (${clc.cyanBright(userTag)})`
-	);
-	nrlogs++;
 };
 
 const logCurrentSong = (serverQueue) => {
