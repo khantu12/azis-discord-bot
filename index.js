@@ -115,7 +115,7 @@ const skip = (message, serverQueue) => {
 	if (!serverQueue || (serverQueue && !serverQueue.connection && !serverQueue.connection.dispatcher))
 		return message.channel.send("There is no song that I could skip!");
 
-	message.channel.send(`Skipped song ${serverQueue.songs[0]}`);
+	message.channel.send(`Skipped **${serverQueue.songs[0].title}**`);
 	serverQueue.connection.dispatcher.end();
 };
 
